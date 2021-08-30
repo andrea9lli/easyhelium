@@ -1,1 +1,3 @@
+pycoingecko
+requests
 rich

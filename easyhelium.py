@@ -1,16 +1,18 @@
 import argparse
+import requests
 import sys
+
 from datetime import datetime
 from datetime import timedelta
+from pycoingecko import CoinGeckoAPI
+from rich.console import Console
+from rich.progress import Progress
+from rich.table import Table
 
-import requests
 
 __author__ = "a9lli"
 __copyright__ = "a9lli"
 __license__ = "MIT"
-
-from rich.console import Console
-from rich.progress import Progress
 
 
 def beautify(h: dict):
@@ -38,12 +40,30 @@ def beautify(h: dict):
     console.print(f'Witnesses: {h["witnesses"]}')
     console.print('-' * 64)
 
+    cg = CoinGeckoAPI()
+    eur = cg.get_price(ids='helium', vs_currencies='eur').get('helium').get('eur')
+
+    hnt_reward_last24 = round(h["rewards_last24"], 3)
+    eur_reward_last24 = round(eur*hnt_reward_last24, 2)
+
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Date")
+    table.add_column("Reward amount", justify="center")
+    table.add_column("Reward type", justify="center")
+
+
     for r in h['rewards']:
-        console.print(f'[magenta][{r["time"]}][/magenta]\t'
-                      f'{round(r["amount"], 2)} HNT\t{r["type"]}')
-    console.print('-' * 64)
+        table.add_row(
+            f'[magenta]{r["time"]}[/magenta]',
+            f'[bold]{round(r["amount"], 3)}[/bold] HNT',
+            r["type"]
+            )
+
+    console.print(table)
+
+
     console.print(f'Total reward in last 24h: '
-                  f'{round(h["rewards_last24"], 2)} HNT')
+                  f'{hnt_reward_last24} HNT ({eur_reward_last24}€)')
     console.print('-' * 64)
 
 
@@ -76,7 +96,7 @@ def do_magic(args):
             reward_time = datetime.fromtimestamp(d['time'])
             if reward_time < datetime.today() - timedelta(days=1):
                 break
-            reward_amount = d['rewards'][0]['amount'] / 10 ** 7
+            reward_amount = d['rewards'][0]['amount'] / 10 ** 8
             reward_type = d['rewards'][0]['type']
             hotspot['rewards'].append({
                 'time': reward_time,
