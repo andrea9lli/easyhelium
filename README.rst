@@ -11,7 +11,7 @@ Usage
 
 .. code-block:: bash
 
-   python easyhelium.py <helium_wallet_id>
+   usage: easyhelium.py [-h] [--last {24h,48h,7d,14d,30d}] [--currency {eur,usd}] wallet_id
 
 
 .. image:: docs/_static/screenshot.jpg
