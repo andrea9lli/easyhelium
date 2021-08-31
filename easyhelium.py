@@ -1,27 +1,24 @@
 import argparse
-import requests
 import sys
-
 from datetime import datetime
 from datetime import timedelta
 
+import requests
 from pycoingecko import CoinGeckoAPI
 from rich.console import Console
 from rich.progress import Progress
 from rich.table import Table
 
-
 __author__ = "a9lli"
 __copyright__ = "a9lli"
 __license__ = "MIT"
 
-
 TIMESPANS = {
-    '24h': timedelta(days=1), 
-    '48h': timedelta(days=2), 
-    '7d': timedelta(days=7), 
+    '24h': timedelta(days=1),
+    '48h': timedelta(days=2),
+    '7d': timedelta(days=7),
     '14d': timedelta(days=14),
-    '30d': timedelta(days=30) 
+    '30d': timedelta(days=30)
 }
 
 CURRENCIES = {
@@ -59,7 +56,7 @@ def beautify(h: dict):
     crcy = cg.get_price(ids='helium', vs_currencies=currency).get('helium').get(currency)
 
     hnt_reward_last = round(h["rewards_last"], 3)
-    eur_reward_last = round(crcy*hnt_reward_last, 2)
+    eur_reward_last = round(crcy * hnt_reward_last, 2)
 
     table = Table(show_header=True, header_style="bold")
     table.add_column("Date")
@@ -71,7 +68,7 @@ def beautify(h: dict):
             f'{r["time"]}',
             f'[bold]{round(r["amount"], 3):.3f}[/bold] HNT',
             r["type"]
-            )
+        )
 
     console.print(table)
 
@@ -89,9 +86,9 @@ def do_magic(args, progress):
 
     r = requests.get(base_url)
     data = r.json().get('data')
-    if data.get('error'):
-        print('Invalid wallet id.')
-        return
+    if not data:
+        print('Invalid wallet id or an error occurred')
+        exit(1)
     progress.update(task, advance=25)
 
     r = requests.get(witness_url)
@@ -109,22 +106,29 @@ def do_magic(args, progress):
     r = requests.get(activity_url)
     cursor = r.json().get('cursor')
     progress.update(task, advance=75)
-    r = requests.get(activity_url, params={'cursor': cursor})
-    data = r.json().get('data')
+    r = requests.get(activity_url, params={'cursor': cursor}).json()
+    data = r.get('data')
     reward_amount_last = 0.
-    for d in data:
-        if 'rewards' in d.keys():
-            reward_time = datetime.fromtimestamp(d['time'])
-            if reward_time < datetime.today() - TIMESPANS[args.last]:
-                break
-            reward_amount = d['rewards'][0]['amount'] / 10 ** 8
-            reward_type = d['rewards'][0]['type']
-            hotspot['rewards'].append({
-                'time': reward_time,
-                'type': reward_type,
-                'amount': reward_amount
-            })
-            reward_amount_last += reward_amount
+    while True:
+        for d in data:
+            if 'rewards' in d.keys():
+                reward_time = datetime.fromtimestamp(d['time'])
+                if reward_time < datetime.today() - TIMESPANS[args.last]:
+                    break
+                for reward in d['rewards']:
+                    reward_amount = reward['amount'] / 1e8
+                    reward_type = reward['type'].replace('poc_', '')
+                    hotspot['rewards'].append({
+                        'time': reward_time,
+                        'type': reward_type,
+                        'amount': reward_amount
+                    })
+                    reward_amount_last += reward_amount
+        cursor = r.get('cursor')
+        if cursor is None:
+            break
+        r = requests.get(activity_url, params={'cursor': cursor}).json()
+        data = r.get('data')
     hotspot['rewards_last'] = reward_amount_last
     hotspot['last'] = TIMESPANS[args.last]
     hotspot['currency'] = args.currency
@@ -136,18 +140,23 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=f'Track your Helium '
                                                  f'wallet activities')
     parser.add_argument(dest='wallet_id',
-                        help="Helium wallet ID",
+                        help='Helium wallet ID',
                         type=str)
     parser.add_argument('--last',
-                    choices=['24h', '48h', '7d', '14d', '30d'],
-                    default='24h',
-                    help='Select between different time periods')
+                        choices=['24h', '48h', '7d', '14d', '30d'],
+                        default='24h',
+                        help='Select between different time periods')
     parser.add_argument('--currency',
-                    choices=['eur', 'usd'],
-                    default='eur',
-                    help='Choose preferred currency')
+                        choices=['eur', 'usd'],
+                        default='eur',
+                        help='Choose preferred currency')
+
+    if len(sys.argv) == 1:
+        parser.print_usage()
+        sys.exit(1)
 
     args = parser.parse_args(sys.argv[1:])
+    Console().clear()
     with Progress(transient=True) as progress:
         hotspot = do_magic(args, progress)
     beautify(hotspot)
